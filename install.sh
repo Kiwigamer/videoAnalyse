@@ -147,6 +147,65 @@ systemctl daemon-reload
 systemctl enable piwifi.service
 systemctl start piwifi.service
 
+echo "[12.1/12] Install AP shortcut commands (apON / apOF)..."
+cat > /usr/local/bin/apON << 'EOF'
+#!/bin/bash
+set -euo pipefail
+
+if [ "${EUID}" -ne 0 ]; then
+	echo "Use: sudo apON"
+	exit 1
+fi
+
+if ! grep -q "# videoAnalyse captive portal start" /etc/dhcpcd.conf; then
+cat >> /etc/dhcpcd.conf << 'EOD'
+# videoAnalyse captive portal start
+interface wlan0
+		static ip_address=192.168.4.1/24
+		nohook wpa_supplicant
+# videoAnalyse captive portal end
+EOD
+fi
+
+systemctl unmask hostapd 2>/dev/null || true
+systemctl enable hostapd dnsmasq piwifi.service
+systemctl restart dhcpcd
+systemctl restart hostapd
+systemctl restart dnsmasq
+systemctl restart piwifi.service
+
+echo "AP ON: hotspot active (SSID from /etc/hostapd/hostapd.conf)"
+EOF
+chmod +x /usr/local/bin/apON
+
+cat > /usr/local/bin/apOF << 'EOF'
+#!/bin/bash
+set -euo pipefail
+
+if [ "${EUID}" -ne 0 ]; then
+	echo "Use: sudo apOF"
+	exit 1
+fi
+
+if grep -q "# videoAnalyse captive portal start" /etc/dhcpcd.conf; then
+	sed -i '/# videoAnalyse captive portal start/,/# videoAnalyse captive portal end/d' /etc/dhcpcd.conf
+fi
+
+systemctl stop piwifi.service 2>/dev/null || true
+systemctl stop hostapd 2>/dev/null || true
+systemctl stop dnsmasq 2>/dev/null || true
+
+systemctl disable hostapd dnsmasq piwifi.service 2>/dev/null || true
+ip addr flush dev wlan0 2>/dev/null || true
+systemctl restart dhcpcd 2>/dev/null || true
+systemctl restart wpa_supplicant 2>/dev/null || true
+systemctl restart wpa_supplicant@wlan0 2>/dev/null || true
+
+echo "AP OFF: default client WLAN restored"
+EOF
+chmod +x /usr/local/bin/apOF
+
 echo ""
 echo "Installation complete."
+echo "Shortcuts: sudo apON | sudo apOF"
 echo "Reboot now with: sudo reboot"
