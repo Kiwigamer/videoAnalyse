@@ -38,9 +38,13 @@ start_ap() {
     echo 1 > /proc/sys/net/ipv4/ip_forward
 
     # Alle HTTP-Anfragen auf den lokalen Server umleiten (captive portal)
-    iptables -t nat -F PREROUTING 2>/dev/null || true
-    iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j DNAT \
-        --to "${AP_IP}:${SERVER_PORT:-80}"
+    if command -v iptables &>/dev/null; then
+        iptables -t nat -F PREROUTING 2>/dev/null || true
+        iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j DNAT \
+            --to "${AP_IP}:${SERVER_PORT:-80}" || log "WARNUNG: iptables NAT fehlgeschlagen"
+    else
+        log "WARNUNG: iptables nicht gefunden — Captive Portal NAT übersprungen"
+    fi
 
     # Prüfen ob hostapd läuft
     sleep 2
@@ -79,8 +83,14 @@ start_fallback() {
     wpa_supplicant -B -i wlan0 -c /tmp/wpa_fallback.conf
     sleep 2
 
-    # DHCP-Adresse holen
-    dhclient wlan0 &
+    # DHCP-Adresse holen (dhcpcd bevorzugt, dhclient als Fallback)
+    if command -v dhcpcd &>/dev/null; then
+        dhcpcd wlan0 &
+    elif command -v dhclient &>/dev/null; then
+        dhclient wlan0 &
+    else
+        log "WARNUNG: Kein DHCP-Client gefunden (dhcpcd/dhclient). IP kommt ggf. von wpa_supplicant."
+    fi
 
     # Warte bis IP vorhanden (max 30s)
     for i in $(seq 1 30); do

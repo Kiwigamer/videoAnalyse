@@ -22,7 +22,10 @@ apt-get install -y \
     python3-flask-socketio \
     python3-eventlet \
     curl \
-    qrencode
+    qrencode \
+    iptables \
+    dhcpcd \
+    isc-dhcp-client 2>/dev/null || true
 
 pip3 install flask flask-socketio eventlet python-dotenv --break-system-packages
 
@@ -68,11 +71,18 @@ sed \
 
 echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
 
+# hostapd unmaskieren (auf Trixie oft masked)
+systemctl unmask hostapd
+systemctl enable hostapd
+
 # --- 5. dnsmasq konfigurieren ---
 echo "[5/10] Konfiguriere dnsmasq..."
 if [ -f /etc/dnsmasq.conf ]; then
     cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%Y%m%d%H%M%S)
 fi
+
+# /etc/dnsmasq.d Verzeichnis erstellen (wird von dnsmasq erwartet)
+mkdir -p /etc/dnsmasq.d
 
 sed \
     -e "s|\${AP_IP}|$AP_IP|g" \
