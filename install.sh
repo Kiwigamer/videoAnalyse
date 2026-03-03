@@ -82,9 +82,12 @@ fi
 
 # shellcheck disable=SC1090
 source "$SCRIPT_DIR/.env"
-export AP_SSID AP_PASSWORD AP_CHANNEL AP_IP AP_DHCP_RANGE_START AP_DHCP_RANGE_END
+export AP_SSID AP_PASSWORD AP_CHANNEL AP_COUNTRY AP_IP AP_DHCP_RANGE_START AP_DHCP_RANGE_END
 export FALLBACK_WIFI_SSID FALLBACK_WIFI_PASSWORD
 export SERVER_PORT MEDIA_DIR SOCKET_PATH MPV_VOLUME
+
+# Standardwert für AP_COUNTRY falls nicht in .env gesetzt
+: "${AP_COUNTRY:=DE}"
 
 # --- 3. Verzeichnisse erstellen ---
 echo "[3/10] Erstelle Verzeichnisse..."
@@ -99,6 +102,7 @@ sed \
     -e "s|\${AP_SSID}|$AP_SSID|g" \
     -e "s|\${AP_PASSWORD}|$AP_PASSWORD|g" \
     -e "s|\${AP_CHANNEL}|$AP_CHANNEL|g" \
+    -e "s|\${AP_COUNTRY}|$AP_COUNTRY|g" \
     "$SCRIPT_DIR/config/hostapd.conf.template" > /etc/hostapd/hostapd.conf
 
 echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
@@ -122,19 +126,33 @@ sed \
     -e "s|\${AP_DHCP_RANGE_END}|$AP_DHCP_RANGE_END|g" \
     "$SCRIPT_DIR/config/dnsmasq.conf.template" > /etc/dnsmasq.conf
 
-# --- 6. dhcpcd.conf anpassen (nur im AP-Modus) ---
+# --- 6. dhcpcd.conf anpassen ---
 echo "[6/10] Konfiguriere dhcpcd..."
-if [ -z "$FALLBACK_WIFI_SSID" ]; then
-    if ! grep -q "# PiStation AP Config" /etc/dhcpcd.conf; then
-        echo "" >> /etc/dhcpcd.conf
-        echo "# PiStation AP Config" >> /etc/dhcpcd.conf
+# 'nohook wpa_supplicant' IMMER eintragen — verhindert, dass dhcpcd
+# automatisch wpa_supplicant startet und das Interface von hostapd klaut.
+if ! grep -q "# PiStation AP Config" /etc/dhcpcd.conf; then
+    echo "" >> /etc/dhcpcd.conf
+    echo "# PiStation AP Config" >> /etc/dhcpcd.conf
+    if [ -z "$FALLBACK_WIFI_SSID" ]; then
+        # Kein Fallback: statische IP + kein wpa_supplicant-Hook
         sed \
             -e "s|\${AP_IP}|$AP_IP|g" \
             "$SCRIPT_DIR/config/dhcpcd.conf.append" >> /etc/dhcpcd.conf
+    else
+        # Mit Fallback: trotzdem wpa_supplicant-Hook deaktivieren;
+        # ap-manager.sh konfiguriert das Interface dynamisch.
+        echo "interface wlan0" >> /etc/dhcpcd.conf
+        echo "nohook wpa_supplicant" >> /etc/dhcpcd.conf
+        echo "  Fallback-WLAN konfiguriert — nur nohook wpa_supplicant gesetzt."
     fi
-else
-    echo "  Fallback-WLAN konfiguriert — dhcpcd wird nicht statisch konfiguriert."
 fi
+
+# wpa_supplicant-Dienste deaktivieren — ap-manager.sh übernimmt alle WLAN-Verwaltung.
+# wpa_supplicant@wlan0 ist der Instanz-Service auf modernem Pi OS (Bookworm).
+systemctl disable wpa_supplicant        2>/dev/null || true
+systemctl disable wpa_supplicant@wlan0  2>/dev/null || true
+systemctl mask    wpa_supplicant@wlan0  2>/dev/null || true
+echo "  wpa_supplicant@wlan0 deaktiviert und maskiert"
 
 # --- 7. systemd Services installieren ---
 echo "[7/10] Installiere systemd Services..."

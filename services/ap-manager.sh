@@ -35,19 +35,32 @@ start_ap() {
 
     # --- Vorherige Prozesse aufräumen -----------------------------------------
     log "Stoppe konkurrierende Prozesse (wpa_supplicant, dhcpcd, NetworkManager)..."
-    systemctl stop wpa_supplicant    2>/dev/null || true
-    systemctl stop NetworkManager   2>/dev/null || true
+    # wpa_supplicant@wlan0 ist der Instanz-Service auf modernem Pi OS (Bookworm)
+    systemctl stop wpa_supplicant@wlan0 2>/dev/null || true
+    systemctl stop wpa_supplicant       2>/dev/null || true
+    systemctl stop NetworkManager       2>/dev/null || true
     # dhcpcd komplett stoppen – sonst re-added es die DHCP-IP nach ip addr flush!
-    systemctl stop dhcpcd           2>/dev/null || true
-    pkill -f "dhclient.*wlan0"      2>/dev/null || true
-    pkill -f "dhcpcd.*wlan0"        2>/dev/null || true
+    systemctl stop dhcpcd               2>/dev/null || true
+    pkill -9 -x wpa_supplicant          2>/dev/null || true
+    pkill -f "dhclient.*wlan0"          2>/dev/null || true
+    pkill -f "dhcpcd.*wlan0"            2>/dev/null || true
     sleep 1
 
-    # --- Regulatory Domain prüfen --------------------------------------------
+    # --- WLAN rfkill entsperren -----------------------------------------------
+    if command -v rfkill &>/dev/null; then
+        rfkill unblock wifi 2>/dev/null || true
+        log "rfkill: WLAN entsperrt"
+    fi
+
+    # --- Regulatory Domain setzen --------------------------------------------
+    # Land aus .env oder Fallback 'DE' — MUSS vor hostapd gesetzt werden!
+    COUNTRY="${AP_COUNTRY:-DE}"
+    log "Setze Regulatory Domain auf '${COUNTRY}'..."
+    iw reg set "$COUNTRY" 2>/dev/null || true
+    sleep 0.5
     log "Regulatory Domain: $(iw reg get 2>&1 | head -3 | tr '\n' ' ')"
     if iw reg get 2>&1 | grep -q "country 00"; then
-        log "WARNUNG: Regulatory Domain ist 'world' (00) — setze auf DE"
-        iw reg set DE 2>/dev/null || true
+        log "WARNUNG: Regulatory Domain ist immer noch 'world' (00) — hostapd könnte fehlschlagen"
     fi
 
     # --- Interface konfigurieren ---------------------------------------------
