@@ -14,12 +14,12 @@ apt-get install -y \
     python3-pip \
     hostapd \
     dnsmasq \
-    chromium-browser \
+    chromium \
     xorg \
     openbox \
     unclutter \
     python3-websocket \
-    python3-python-socketio \
+    python3-flask-socketio \
     python3-eventlet \
     curl \
     qrencode
