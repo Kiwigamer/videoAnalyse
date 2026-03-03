@@ -1,16 +1,6 @@
-# videoAnalyse hotspot setup
+# Raspberry Pi Wifi Hotspot with Captive Portal
 
-This repository configures a Raspberry Pi as a local Wi-Fi hotspot using the same values as your tutorial.
-
-## What this setup does
-
-- Creates hotspot SSID: `raspberrypi`
-- Uses AP IP `192.168.4.1/24` when AP mode is enabled
-- Runs DHCP via `dnsmasq` from `192.168.4.2` to `192.168.4.20`
-- Routes `raspberry.com` to `192.168.4.1`
-- Adds iptables NAT rules including port 80 → 3000 DNAT
-- Keeps normal client Wi-Fi by default for SSH safety
-- Supports one-time AP enable with automatic 15s rollback on failure
+This repository configures a Raspberry Pi as an open WiFi hotspot with a captive portal, following the requested flow 1:1.
 
 ## Install
 
@@ -21,53 +11,21 @@ sudo bash install.sh
 sudo reboot
 ```
 
-## Recovery commands (old broken hook)
+## Result
 
-Run these on the Pi if an old install still causes boot issues:
+- SSID: `Pi WiFi`
+- AP IP: `192.168.4.1`
+- DHCP: `192.168.4.2 - 192.168.4.255`
+- DNS redirect: all domains -> `192.168.4.1`
+- HTTP redirect: `192.168.4.1:80` -> `192.168.4.1:3000`
+- Captive portal service: `piwifi.service`
 
-```bash
-sudo systemctl disable --now videoanalyse-wlan-mode.service || true
-sudo rm -f /etc/systemd/system/videoanalyse-wlan-mode.service
-sudo rm -f /usr/local/bin/wlan-mode-manager.sh
-sudo systemctl daemon-reload
-```
-
-Then run:
+## Check after reboot
 
 ```bash
-sudo bash install.sh
-sudo reboot
+sudo systemctl status hostapd dnsmasq piwifi --no-pager
 ```
-
-## One-time AP with failsafe
-
-Arm AP for next boot only:
 
 ```bash
-sudo videoanalyse-ap-once
-sudo reboot
+ssh pi@192.168.4.1
 ```
-
-Status:
-
-```bash
-sudo videoanalyse-ap-status
-```
-
-Cancel AP before reboot:
-
-```bash
-sudo videoanalyse-ap-disarm
-```
-
-Force safe client mode immediately:
-
-```bash
-sudo videoanalyse-wlan-safe
-```
-
-## After reboot
-
-- Default boot: Pi uses normal client Wi-Fi for SSH.
-- If AP was armed and starts correctly: join `raspberrypi`.
-- AP failure case: script waits 15s, then auto-reverts to client mode.
