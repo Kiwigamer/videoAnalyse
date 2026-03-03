@@ -1,0 +1,19 @@
+[Unit]
+Description=PiStation MPV Player Daemon
+After=graphical.target
+
+[Service]
+Type=simple
+User=pi
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/bin/mpv --idle=yes --input-ipc-server=/tmp/mpv-socket \
+          --fullscreen=no --no-terminal --loop-file=no \
+          --volume=100 --keep-open=yes
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

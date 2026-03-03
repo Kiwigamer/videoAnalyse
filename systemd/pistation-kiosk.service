@@ -1,0 +1,19 @@
+[Unit]
+Description=PiStation Kiosk Dashboard
+After=graphical-session.target pistation-server.service
+Requires=pistation-server.service
+
+[Service]
+Type=simple
+User=pi
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+ExecStartPre=/bin/sleep 5
+ExecStart=/home/pi/pi-media-station/services/dashboard-start.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

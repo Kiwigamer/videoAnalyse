@@ -1,0 +1,16 @@
+[Unit]
+Description=PiStation Access Point Manager
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/home/pi/pi-media-station/.env
+ExecStart=/home/pi/pi-media-station/services/ap-manager.sh
+ExecStop=/bin/bash -c 'systemctl stop hostapd dnsmasq; ip addr flush dev wlan0'
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
