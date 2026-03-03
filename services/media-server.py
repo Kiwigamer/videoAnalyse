@@ -4,14 +4,50 @@ PiStation Media Server
 Flask + Flask-SocketIO Web-Server mit REST-API und Echtzeit-Status via SocketIO
 """
 
+import logging
 import os
 import json
+import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 from flask import Flask, request, jsonify, send_from_directory, abort
 from flask_socketio import SocketIO, emit
+
+# ---------------------------------------------------------------------------
+# Logging — schreibt in Datei UND stdout (damit auch journald es sieht)
+# ---------------------------------------------------------------------------
+
+LOG_DIR = Path("/var/log/pistation")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "server.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(str(LOG_FILE), encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+log = logging.getLogger("pistation")
+
+# Unbehandelte Exceptions ebenfalls ins Log schreiben
+def _handle_exception(exc_type, exc_value, exc_tb):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+        return
+    log.critical("Unbehandelte Exception:", exc_info=(exc_type, exc_value, exc_tb))
+
+sys.excepthook = _handle_exception
+
+log.info("=" * 50)
+log.info("PiStation Media Server startet")
+log.info(f"Python {sys.version}")
+log.info(f"Log-Datei: {LOG_FILE}")
 
 # ---------------------------------------------------------------------------
 # Konfiguration aus .env laden
@@ -38,6 +74,8 @@ SOCKET_PATH = os.environ.get("SOCKET_PATH", "/tmp/mpv-socket")
 SERVER_PORT = int(os.environ.get("SERVER_PORT", 80))
 MPV_VOLUME  = int(os.environ.get("MPV_VOLUME", 100))
 AP_IP       = os.environ.get("AP_IP", "10.42.0.1")
+
+log.info(f"Konfiguration: PORT={SERVER_PORT}, MEDIA_DIR={MEDIA_DIR}, AP_IP={AP_IP}")
 
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 MAX_CONTENT_LENGTH = 4 * 1024 * 1024 * 1024  # 4 GB
@@ -220,19 +258,21 @@ def api_delete_video(filename: str):
 
 def status_broadcast_thread():
     """Sendet alle 500ms den aktuellen Player-Status an alle Clients."""
+    log.info("Status-Broadcast-Thread gestartet")
     while True:
         try:
             status = player.get_status()
             status["server_ip"] = get_server_ip()
             status["ap_ip"] = AP_IP
             socketio.emit("status_update", status)
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Status-Broadcast Fehler: {e}")
         time.sleep(0.5)
 
 
 @socketio.on("connect")
 def on_connect():
+    log.info(f"Client verbunden: {request.remote_addr}")
     status = player.get_status()
     status["server_ip"] = get_server_ip()
     status["ap_ip"] = AP_IP
@@ -248,7 +288,27 @@ if __name__ == "__main__":
     t.start()
 
     # mpv im Idle-Modus vorstarten
-    player.ensure_running()
+    log.info("Starte mpv im Idle-Modus...")
+    if player.ensure_running():
+        log.info("mpv bereit")
+    else:
+        log.warning("mpv konnte nicht gestartet werden — weiter ohne Player")
 
-    print(f"PiStation Server läuft auf Port {SERVER_PORT}")
-    socketio.run(app, host="0.0.0.0", port=SERVER_PORT, use_reloader=False)
+    log.info(f"Starte Flask-Server auf 0.0.0.0:{SERVER_PORT}")
+    try:
+        socketio.run(app, host="0.0.0.0", port=SERVER_PORT, use_reloader=False)
+    except PermissionError:
+        log.critical(
+            f"FEHLER: Port {SERVER_PORT} kann nicht gebunden werden (Permission denied).\n"
+            "  Lösungen:\n"
+            "  1. sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3\n"
+            "  2. Oder SERVER_PORT=8080 in .env setzen\n"
+            "  3. Oder AmbientCapabilities=CAP_NET_BIND_SERVICE in pistation-server.service"
+        )
+        sys.exit(1)
+    except OSError as e:
+        log.critical(f"FEHLER beim Starten des Servers: {e}")
+        sys.exit(1)
+    except Exception as e:
+        log.critical(f"Unbekannter Fehler: {e}\n{traceback.format_exc()}")
+        sys.exit(1)

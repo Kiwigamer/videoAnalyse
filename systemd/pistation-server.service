@@ -13,6 +13,9 @@ Restart=always
 RestartSec=3
 StandardOutput=journal
 StandardError=journal
+# Erlaube User=pi auf Port 80 zu binden
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target

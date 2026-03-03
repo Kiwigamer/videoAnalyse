@@ -4,12 +4,26 @@
 
 export DISPLAY=:0
 
+LOG_DIR="/var/log/pistation"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/kiosk.log"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+# Stderr auch ins Log
+exec 2> >(while IFS= read -r line; do log "[STDERR] $line"; done)
+
+log "--- dashboard-start.sh gestartet (PID $$) ---"
+log "DISPLAY=$DISPLAY"
+
 # Warte bis der Webserver erreichbar ist
-echo "Warte auf PiStation Server..."
+log "Warte auf PiStation Server..."
 until curl -s http://localhost/dashboard > /dev/null 2>&1; do
     sleep 1
 done
-echo "Server erreichbar — starte Kiosk..."
+log "Server erreichbar — starte Chromium Kiosk"
 
 # Bildschirmschoner deaktivieren
 xset s off
@@ -19,7 +33,7 @@ xset -dpms
 # Mauszeiger verstecken
 unclutter -idle 0.1 -root &
 
-# Chromium im Kiosk-Mode
+log "Starte Chromium..."
 chromium-browser \
     --kiosk \
     --noerrdialogs \

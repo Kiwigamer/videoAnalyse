@@ -2,11 +2,24 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
 ENV_FILE="$SCRIPT_DIR/.env"
-LOG_FILE="/var/log/pistation/ap-manager.log"
+LOG_DIR="/var/log/pistation"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/ap-manager.log"
+
+# Stderr ebenfalls in Log umleiten
+exec 2> >(while IFS= read -r line; do
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STDERR] $line" | tee -a "$LOG_FILE"
+done)
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
+
+# Bei unkontrolliertem Exit immer loggen
+trap 'EC=$?; [ $EC -ne 0 ] && log "[FEHLER] ap-manager.sh beendet mit Exit-Code $EC in Zeile $LINENO"' EXIT
+
+log "--- ap-manager.sh gestartet (PID $$) ---"
+log "Repo: $SCRIPT_DIR"
 
 # .env laden
 if [ -f "$ENV_FILE" ]; then

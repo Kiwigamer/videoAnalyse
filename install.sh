@@ -3,7 +3,24 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# --- Logging: alles nach Datei UND Terminal ---
+LOG_DIR="/var/log/pistation"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/install.log"
+
+# Alle Ausgaben (stdout + stderr) in Log schreiben
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+# Bei Fehler: Zeile und Exit-Code ins Log schreiben
+trap 'EC=$?; echo ""; echo "[FEHLER] install.sh abgebrochen in Zeile $LINENO (Exit-Code $EC)" ; echo "[FEHLER] Zeitstempel: $(date)" ; echo "[FEHLER] Logdatei: $LOG_FILE"' ERR
+
+echo ""
+echo "============================================"
 echo "=== PiMediaStation Installer ==="
+echo "=== Start: $(date) ==="
+echo "=== Logdatei: $LOG_FILE ==="
+echo "============================================"
+echo ""
 
 # --- 1. Pakete installieren ---
 echo "[1/10] Installiere Pakete..."
@@ -150,6 +167,5 @@ chmod +x "$SCRIPT_DIR/services/player-controller.py"
 # --- 10. Fertig ---
 echo ""
 echo "=============================================="
-echo "[10/10] Installation abgeschlossen."
-echo "Bitte neu starten: sudo reboot"
-echo "=============================================="
+echo "[10/10] Installation abgeschlossen: $(date)"
+echo "Logdatei gespeichert: $LOG_FILE"
