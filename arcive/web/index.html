@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PiMediaStation — Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body class="dashboard-body">
+
+    <!-- Header -->
+    <header class="dashboard-header">
+        <span class="logo">🎬 PiMediaStation</span>
+        <span class="server-ip" id="serverIp">…</span>
+    </header>
+
+    <!-- Haupt-Bereich: Wiedergabe-Status -->
+    <main class="dashboard-main">
+
+        <!-- Kein Video -->
+        <section id="noVideoScreen" class="no-video-screen">
+            <div class="no-video-icon">📂</div>
+            <div class="no-video-text">Kein Video vorhanden</div>
+            <div class="no-video-hint">Lade ein Video über die Fernbedienung hoch</div>
+        </section>
+
+        <!-- Video läuft -->
+        <section id="videoScreen" class="video-screen hidden">
+            <div class="now-playing-label">▶ Jetzt läuft</div>
+            <div class="filename" id="filename">—</div>
+
+            <!-- Fortschrittsbalken -->
+            <div class="progress-container">
+                <div class="progress-bar-outer">
+                    <div class="progress-bar-inner" id="progressBar"></div>
+                </div>
+                <div class="progress-labels">
+                    <span id="timePos">00:00</span>
+                    <span id="percent">0%</span>
+                    <span id="timeDur">00:00</span>
+                </div>
+            </div>
+
+            <!-- Metadaten -->
+            <div class="meta-row">
+                <span>Geschwindigkeit: <strong id="speed">1.0</strong>x</span>
+                <span>Lautstärke: <strong id="volume">100</strong></span>
+                <span id="pausedBadge" class="badge badge-paused hidden">PAUSE</span>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer: Verbindungsinfo + QR -->
+    <footer class="dashboard-footer">
+        <div class="connect-info">
+            <div class="connect-ssid">WLAN: <strong id="apSsid">PiStation</strong></div>
+            <div class="connect-url">Öffne: <strong id="apUrl">http://10.42.0.1</strong></div>
+        </div>
+        <div id="qrcode" class="qr-code"></div>
+        <div class="client-count">Verbundene Geräte: <strong id="clientCount">—</strong></div>
+    </footer>
+
+    <!-- SocketIO (lokaler Server) -->
+    <script src="/static/socket.io.min.js"></script>
+    <!-- QR-Code Bibliothek (lokal, kein Internet nötig) -->
+    <script src="/static/qrcode.min.js"></script>
+    <script src="/static/dashboard.js"></script>
+</body>
+
+</html>
