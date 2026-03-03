@@ -1,76 +1,73 @@
-# videoAnalyse Project
+# videoAnalyse hotspot setup
 
-This project sets up a Raspberry Pi to broadcast its own Wi-Fi network and run a web server. The setup is automated through the `install.sh` script, which installs necessary packages and configures the network settings.
+This repository configures a Raspberry Pi as a local Wi-Fi hotspot using the same values as your tutorial.
 
-## Project Structure
+## What this setup does
 
+- Creates hotspot SSID: `raspberrypi`
+- Uses AP IP `192.168.4.1/24` when AP mode is enabled
+- Runs DHCP via `dnsmasq` from `192.168.4.2` to `192.168.4.20`
+- Routes `raspberry.com` to `192.168.4.1`
+- Adds iptables NAT rules including port 80 → 3000 DNAT
+- Keeps normal client Wi-Fi by default for SSH safety
+- Supports one-time AP enable with automatic 15s rollback on failure
+
+## Install
+
+```bash
+git clone https://github.com/Kiwigamer/videoAnalyse.git
+cd videoAnalyse
+sudo bash install.sh
+sudo reboot
 ```
-videoAnalyse
-├── install.sh
-├── config
-│   ├── dnsmasq.conf
-│   ├── hostapd.conf
-│   └── sysctl.conf
-├── web
-│   └── index.html
-└── README.md
+
+## Recovery commands (old broken hook)
+
+Run these on the Pi if an old install still causes boot issues:
+
+```bash
+sudo systemctl disable --now videoanalyse-wlan-mode.service || true
+sudo rm -f /etc/systemd/system/videoanalyse-wlan-mode.service
+sudo rm -f /usr/local/bin/wlan-mode-manager.sh
+sudo systemctl daemon-reload
 ```
 
-## Installation Instructions
+Then run:
 
-1. **Clone the Repository**: 
-   ```bash
-   git clone https://github.com/Kiwigamer/videoAnalyse.git
-   cd videoAnalyse
-   ```
+```bash
+sudo bash install.sh
+sudo reboot
+```
 
-2. **Run the Installation Script**: 
-   Execute the following command to set up the Raspberry Pi:
-   ```bash
-   sudo bash install.sh
-   ```
+## One-time AP with failsafe
 
-## Safe Boot Behavior (Fail-safe)
+Arm AP for next boot only:
 
-By default, the Pi keeps normal client Wi-Fi mode (so SSH remains possible).
-
-- AP mode does **not** start automatically every boot.
-- AP mode starts only if you explicitly arm it before reboot.
-- The AP flag is automatically reset during boot (one-time behavior).
-
-### Commands
-
-Arm AP mode for **next boot only**:
 ```bash
 sudo videoanalyse-ap-once
 sudo reboot
 ```
 
-Check status:
+Status:
+
 ```bash
 sudo videoanalyse-ap-status
 ```
 
-Cancel AP request before reboot:
+Cancel AP before reboot:
+
 ```bash
 sudo videoanalyse-ap-disarm
 ```
 
-When AP mode is active, gateway is `192.168.11.1`.
+Force safe client mode immediately:
 
-## Configuration Files
+```bash
+sudo videoanalyse-wlan-safe
+```
 
-- **config/dnsmasq.conf**: Configures the dnsmasq service for DHCP and DNS services. It defines the IP address range for DHCP clients and the local DNS domain.
+## After reboot
 
-- **config/hostapd.conf**: Configures the hostapd service to allow the Raspberry Pi to act as a wireless access point. It specifies the SSID, password, and other parameters for the Wi-Fi network.
-
-- **config/sysctl.conf**: Enables IP forwarding on the Raspberry Pi, allowing it to route traffic between the wireless and Ethernet networks.
-
-## Web Server
-
-- **web/index.html**: This file serves as the main webpage hosted by the Raspberry Pi's web server. It can be accessed by clients connected to the Raspberry Pi's Wi-Fi network.
-
-## Notes
-
-- Ensure that your Raspberry Pi is connected to the internet during the installation process to download the necessary packages.
-- After running the installation script, you may need to reboot your Raspberry Pi for the changes to take effect.
+- Default boot: Pi uses normal client Wi-Fi for SSH.
+- If AP was armed and starts correctly: join `raspberrypi`.
+- AP failure case: script waits 15s, then auto-reverts to client mode.
