@@ -33,41 +33,99 @@ fi
 start_ap() {
     log "Starte Access Point..."
 
-    # wpa_supplicant stoppen damit wlan0 frei ist
-    systemctl stop wpa_supplicant 2>/dev/null || true
+    # --- Vorherige Prozesse aufräumen -----------------------------------------
+    log "Stoppe konkurrierende Prozesse (wpa_supplicant, dhcpcd, NetworkManager)..."
+    systemctl stop wpa_supplicant    2>/dev/null || true
+    systemctl stop NetworkManager   2>/dev/null || true
+    # dhcpcd komplett stoppen – sonst re-added es die DHCP-IP nach ip addr flush!
+    systemctl stop dhcpcd           2>/dev/null || true
+    pkill -f "dhclient.*wlan0"      2>/dev/null || true
+    pkill -f "dhcpcd.*wlan0"        2>/dev/null || true
+    sleep 1
 
-    # Interface konfigurieren
+    # --- Regulatory Domain prüfen --------------------------------------------
+    log "Regulatory Domain: $(iw reg get 2>&1 | head -3 | tr '\n' ' ')"
+    if iw reg get 2>&1 | grep -q "country 00"; then
+        log "WARNUNG: Regulatory Domain ist 'world' (00) — setze auf DE"
+        iw reg set DE 2>/dev/null || true
+    fi
+
+    # --- Interface konfigurieren ---------------------------------------------
+    log "Konfiguriere wlan0..."
     ip link set wlan0 down
     ip addr flush dev wlan0
+    log "  IPs nach flush: $(ip addr show wlan0 | grep 'inet' | tr '\n' '|')"
     ip addr add "${AP_IP}/24" dev wlan0
     ip link set wlan0 up
+    sleep 1
+    log "  wlan0 nach Konfiguration: $(ip addr show wlan0 | grep 'inet' | tr '\n' '|')"
+    log "  wlan0 Link-Status: $(ip link show wlan0 | head -1)"
 
-    # hostapd und dnsmasq starten
+    # --- hostapd konfigurieren & starten -------------------------------------
+    log "Starte hostapd (SSID=${AP_SSID}, Kanal=${AP_CHANNEL:-6})..."
+    systemctl stop  hostapd 2>/dev/null || true
+    sleep 1
     systemctl start hostapd
-    sleep 2
-    systemctl start dnsmasq
+    sleep 3
 
-    # IP-Forwarding aktivieren
+    if ! systemctl is-active --quiet hostapd; then
+        log "FEHLER: hostapd konnte nicht gestartet werden!"
+        log "  hostapd journal:"
+        journalctl -u hostapd -n 30 --no-pager 2>&1 | while IFS= read -r line; do
+            log "    [hostapd] $line"
+        done
+        log "  hostapd.conf Inhalt (ohne Passwort):"
+        grep -v "passphrase\|password\|psk" /etc/hostapd/hostapd.conf 2>/dev/null | \
+            while IFS= read -r line; do log "    $line"; done
+        start_fallback
+        return
+    fi
+    log "  hostapd aktiv — AP sendet auf Kanal ${AP_CHANNEL:-6}"
+
+    # --- iw info / Kanal-Check -----------------------------------------------
+    log "  iw dev wlan0 info:"
+    iw dev wlan0 info 2>&1 | while IFS= read -r line; do log "    $line"; done
+
+    # --- dnsmasq starten (DHCP für AP-Clients) --------------------------------
+    log "Starte dnsmasq (DHCP ${AP_DHCP_RANGE_START}–${AP_DHCP_RANGE_END})..."
+    systemctl stop  dnsmasq 2>/dev/null || true
+    sleep 1
+    systemctl start dnsmasq
+    sleep 2
+
+    if ! systemctl is-active --quiet dnsmasq; then
+        log "FEHLER: dnsmasq konnte nicht gestartet werden — Clients bekommen keine IP!"
+        log "  dnsmasq journal:"
+        journalctl -u dnsmasq -n 30 --no-pager 2>&1 | while IFS= read -r line; do
+            log "    [dnsmasq] $line"
+        done
+    else
+        log "  dnsmasq aktiv — DHCP-Server läuft"
+    fi
+
+    # --- IP-Forwarding & iptables NAT ----------------------------------------
+    log "Aktiviere IP-Forwarding und Captive-Portal NAT..."
     echo 1 > /proc/sys/net/ipv4/ip_forward
 
-    # Alle HTTP-Anfragen auf den lokalen Server umleiten (captive portal)
     if command -v iptables &>/dev/null; then
         iptables -t nat -F PREROUTING 2>/dev/null || true
         iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j DNAT \
             --to "${AP_IP}:${SERVER_PORT:-80}" || log "WARNUNG: iptables NAT fehlgeschlagen"
+        log "  iptables NAT Regel gesetzt (Port 80 → ${AP_IP}:${SERVER_PORT:-80})"
     else
         log "WARNUNG: iptables nicht gefunden — Captive Portal NAT übersprungen"
     fi
 
-    # Prüfen ob hostapd läuft
-    sleep 2
-    if systemctl is-active --quiet hostapd; then
-        log "Access Point '${AP_SSID}' erfolgreich gestartet auf ${AP_IP}"
-        exit 0
-    else
-        log "hostapd konnte nicht gestartet werden."
-        start_fallback
-    fi
+    # --- Abschlussstatus ------------------------------------------------------
+    log "=== AP-Status Zusammenfassung ==="
+    log "  AP-SSID   : ${AP_SSID}"
+    log "  AP-IP     : ${AP_IP}"
+    log "  Kanal     : $(iw dev wlan0 info 2>/dev/null | grep channel | awk '{print $2, $3, $4}')"
+    log "  wlan0-IPs : $(ip addr show wlan0 | grep 'inet' | awk '{print $2}' | tr '\n' ' ')"
+    log "  hostapd   : $(systemctl is-active hostapd)"
+    log "  dnsmasq   : $(systemctl is-active dnsmasq)"
+    log "Access Point '${AP_SSID}' erfolgreich gestartet auf ${AP_IP}"
+    exit 0
 }
 
 start_fallback() {
@@ -93,29 +151,51 @@ start_fallback() {
     wpa_passphrase "$FALLBACK_WIFI_SSID" "$FALLBACK_WIFI_PASSWORD" > /tmp/wpa_fallback.conf
 
     # wpa_supplicant starten
+    log "Starte wpa_supplicant für '$FALLBACK_WIFI_SSID'..."
     wpa_supplicant -B -i wlan0 -c /tmp/wpa_fallback.conf
-    sleep 2
+    sleep 3
 
-    # DHCP-Adresse holen (dhcpcd bevorzugt, dhclient als Fallback)
+    # DHCP-Adresse holen — dhcpcd im Vordergrund (nicht als Hintergrundprozess, damit wlan0
+    # nicht nach Beendigung dieses Skripts unkontrolliert DHCP betreibt)
     if command -v dhcpcd &>/dev/null; then
-        dhcpcd wlan0 &
+        log "Hole DHCP-Adresse via dhcpcd..."
+        # -w wartet bis IP zugewiesen (max 30s intern)
+        dhcpcd -w --timeout 30 wlan0 &
+        DHCP_PID=$!
+        # Wir warten selbst max 30s und prüfen ob IP da ist
+        for i in $(seq 1 30); do
+            if ip addr show wlan0 | grep -q "inet "; then
+                IP=$(ip addr show wlan0 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+                log "Fallback-WLAN verbunden. IP: $IP (dhcpcd PID=$DHCP_PID läuft weiter)"
+                exit 0
+            fi
+            sleep 1
+        done
     elif command -v dhclient &>/dev/null; then
+        log "Hole DHCP-Adresse via dhclient..."
         dhclient wlan0 &
+        for i in $(seq 1 30); do
+            if ip addr show wlan0 | grep -q "inet "; then
+                IP=$(ip addr show wlan0 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+                log "Fallback-WLAN verbunden. IP: $IP"
+                exit 0
+            fi
+            sleep 1
+        done
     else
         log "WARNUNG: Kein DHCP-Client gefunden (dhcpcd/dhclient). IP kommt ggf. von wpa_supplicant."
+        for i in $(seq 1 30); do
+            if ip addr show wlan0 | grep -q "inet "; then
+                IP=$(ip addr show wlan0 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+                log "Fallback-WLAN verbunden (kein DHCP-Client). IP: $IP"
+                exit 0
+            fi
+            sleep 1
+        done
     fi
 
-    # Warte bis IP vorhanden (max 30s)
-    for i in $(seq 1 30); do
-        if ip addr show wlan0 | grep -q "inet "; then
-            IP=$(ip addr show wlan0 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-            log "Fallback-WLAN verbunden. IP: $IP"
-            exit 0
-        fi
-        sleep 1
-    done
-
     log "Fallback-WLAN: Timeout beim Warten auf IP-Adresse."
+    log "  wpa_supplicant Status: $(wpa_cli -i wlan0 status 2>&1 | head -5 | tr '\n' '|')"
     exit 2
 }
 

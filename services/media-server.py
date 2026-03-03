@@ -21,7 +21,11 @@ from flask_socketio import SocketIO, emit
 # ---------------------------------------------------------------------------
 
 LOG_DIR = Path("/var/log/pistation")
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+except PermissionError:
+    # Verzeichnis wird von install.sh erstellt; hier nur tolerieren falls noch nicht vorhanden
+    pass
 LOG_FILE = LOG_DIR / "server.log"
 
 logging.basicConfig(
@@ -29,7 +33,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
-        logging.FileHandler(str(LOG_FILE), encoding="utf-8"),
+        *([] if not LOG_DIR.exists() else [logging.FileHandler(str(LOG_FILE), encoding="utf-8")]),
         logging.StreamHandler(sys.stdout),
     ],
 )

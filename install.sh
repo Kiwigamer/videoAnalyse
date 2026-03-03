@@ -41,8 +41,11 @@ apt-get install -y \
     curl \
     qrencode \
     iptables \
-    dhcpcd \
-    isc-dhcp-client 2>/dev/null || true
+    dhcpcd
+
+# isc-dhcp-client: optional, nicht auf Trixie verfügbar
+apt-get install -y isc-dhcp-client 2>/dev/null || \
+    echo "  INFO: isc-dhcp-client nicht verfügbar (auf Trixie normal) — dhcpcd wird genutzt."
 
 pip3 install flask flask-socketio eventlet python-dotenv --break-system-packages
 
@@ -55,6 +58,18 @@ if [ ! -f "$SOCKETIO_JS" ]; then
         -o "$SOCKETIO_JS" || {
         echo "  WARNUNG: socket.io.min.js konnte nicht heruntergeladen werden."
         echo "           Bitte manuell in web/static/ ablegen."
+    }
+fi
+
+# QR-Code Bibliothek herunterladen (für Offline-Betrieb, statt CDN)
+QRCODE_JS="$SCRIPT_DIR/web/static/qrcode.min.js"
+if [ ! -f "$QRCODE_JS" ]; then
+    echo "  Lade qrcode.min.js herunter..."
+    curl -fsSL \
+        "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" \
+        -o "$QRCODE_JS" || {
+        echo "  WARNUNG: qrcode.min.js konnte nicht heruntergeladen werden."
+        echo "           Dashboard-QR-Code funktioniert nicht offline."
     }
 fi
 
@@ -136,10 +151,19 @@ done
 # --- 8. systemd reload + enable ---
 echo "[8/10] Aktiviere Services..."
 systemctl daemon-reload
-systemctl enable pistation-ap pistation-server pistation-player pistation-kiosk
 
-# --- 9. X11 + Openbox Autostart ---
-echo "[9/10] Konfiguriere X11 / Openbox..."
+# pistation-player NICHT enablen: media-server.py startet mpv selbst via IPC.
+# Beide gleichzeitig würden auf demselben Socket kollidieren.
+systemctl disable pistation-player 2>/dev/null || true
+systemctl enable pistation-ap pistation-server pistation-kiosk
+
+# dnsmasq beim Boot NICHT starten — ap-manager.sh startet/stoppt es bei Bedarf.
+# So werden keine Ports blockiert wenn nur Fallback-WLAN aktiv ist.
+systemctl disable dnsmasq 2>/dev/null || true
+echo "  INFO: dnsmasq bleibt disabled (ap-manager startet es bei Bedarf)"
+
+# --- 9. X11 + Openbox Autostart + Autologin ---
+echo "[9/10] Konfiguriere X11 / Openbox / Autologin..."
 
 # Erlaube beliebigen Nutzer X11 zu starten
 cat > /etc/X11/Xwrapper.config << 'EOF'
@@ -147,16 +171,50 @@ allowed_users=anybody
 needs_root_rights=yes
 EOF
 
-# Openbox Autostart
+# --- Autologin auf tty1 ---
+# Pi OS Lite hat keinen Display-Manager. Diese Konfiguration sorgt dafür,
+# dass Nutzer 'pi' automatisch auf tty1 eingeloggt wird.
+mkdir -p /etc/systemd/system/getty@tty1.service.d
+cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << 'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin pi --noclear %I $TERM
+EOF
+echo "  Autologin für pi auf tty1 konfiguriert"
+
+# --- .bash_profile: startx automatisch auf tty1 ---
+# Wenn keine DISPLAY-Variable gesetzt ist und Login auf tty1 → startx
+if [ ! -f /home/pi/.bash_profile ] || ! grep -q 'PiStation' /home/pi/.bash_profile; then
+    cat > /home/pi/.bash_profile << 'BASHEOF'
+# PiStation: X11 auf tty1 automatisch starten
+if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+    exec startx 2>>/var/log/pistation/startx.log
+fi
+BASHEOF
+    chown pi:pi /home/pi/.bash_profile
+    echo "  .bash_profile erstellt (startet X auf tty1)"
+else
+    echo "  .bash_profile bereits vorhanden — unverändert"
+fi
+
+# --- .xinitrc: openbox-session starten ---
+cat > /home/pi/.xinitrc << 'XINITEOF'
+exec openbox-session
+XINITEOF
+chown pi:pi /home/pi/.xinitrc
+echo "  .xinitrc erstellt (startet openbox-session)"
+
+# --- Openbox Autostart ---
 OPENBOX_DIR=/home/pi/.config/openbox
 mkdir -p "$OPENBOX_DIR"
 cat > "$OPENBOX_DIR/autostart" << AUTOSTART
-# PiStation Kiosk
+# PiStation Kiosk — startet Dashboard in Chromium
 /home/pi/pi-media-station/services/dashboard-start.sh &
 AUTOSTART
 # Korrekten Pfad einsetzen
 sed -i "s|/home/pi/pi-media-station|$SCRIPT_DIR|g" "$OPENBOX_DIR/autostart"
 chown -R pi:pi /home/pi/.config
+echo "  Openbox Autostart konfiguriert: $OPENBOX_DIR/autostart"
 
 # Skripte ausführbar machen
 chmod +x "$SCRIPT_DIR/services/ap-manager.sh"
@@ -169,3 +227,7 @@ echo ""
 echo "=============================================="
 echo "[10/10] Installation abgeschlossen: $(date)"
 echo "Logdatei gespeichert: $LOG_FILE"
+echo "=============================================="
+echo ""
+echo "Bitte jetzt neu starten:  sudo reboot"
+echo ""

@@ -1,7 +1,7 @@
 [Unit]
 Description=PiStation Media Server
 After=network.target pistation-ap.service
-Requires=pistation-ap.service
+Wants=pistation-ap.service
 
 [Service]
 Type=simple

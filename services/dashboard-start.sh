@@ -34,7 +34,7 @@ xset -dpms
 unclutter -idle 0.1 -root &
 
 log "Starte Chromium..."
-chromium-browser \
+chromium \
     --kiosk \
     --noerrdialogs \
     --disable-infobars \
