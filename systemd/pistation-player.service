@@ -6,8 +6,11 @@ After=graphical.target
 Type=simple
 User=pi
 EnvironmentFile=/home/pi/pi-media-station/.env
-ExecStart=/usr/bin/mpv --fullscreen --idle=yes --input-ipc-server=${SOCKET_PATH} --force-window=yes
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+ExecStart=/usr/bin/mpv --fullscreen --idle=yes --input-ipc-server=${SOCKET_PATH} --force-window=yes --no-terminal
 Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
