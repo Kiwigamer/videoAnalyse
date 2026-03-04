@@ -1,3 +1,0 @@
-interface wlan0
-static ip_address=${AP_IP}/24
-nohook wpa_supplicant

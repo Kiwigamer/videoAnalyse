@@ -1,0 +1,4 @@
+#!/bin/bash
+source /home/pi/pi-media-station/.env
+# Disconnects from current Wi-Fi and creates the hotspot (default IP: 10.42.0.1)
+nmcli device wifi hotspot ifname wlan0 ssid "$AP_SSID" password "$AP_PASSWORD"

@@ -1,21 +1,14 @@
 [Unit]
 Description=PiStation Media Server
-After=network.target pistation-ap.service
-Wants=pistation-ap.service
+After=network.target
 
 [Service]
 Type=simple
-User=pi
+User=root
 WorkingDirectory=/home/pi/pi-media-station
 EnvironmentFile=/home/pi/pi-media-station/.env
 ExecStart=/usr/bin/python3 services/media-server.py
 Restart=always
-RestartSec=3
-StandardOutput=journal
-StandardError=journal
-# Erlaube User=pi auf Port 80 zu binden
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target

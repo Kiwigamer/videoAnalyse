@@ -1,0 +1,13 @@
+[Unit]
+Description=PiStation mpv Player
+After=graphical.target
+
+[Service]
+Type=simple
+User=pi
+EnvironmentFile=/home/pi/pi-media-station/.env
+ExecStart=/usr/bin/mpv --fullscreen --idle=yes --input-ipc-server=${SOCKET_PATH} --force-window=yes
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

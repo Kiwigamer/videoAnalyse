@@ -1,26 +1,41 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to Raspberry Pi Web Server</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 50px;
-        }
-        h1 {
-            color: #4CAF50;
-        }
-        p {
-            font-size: 18px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PiStation Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #111; color: #fff; margin: 0; padding: 24px; }
+    .card { background: #1a1a1a; border-radius: 10px; padding: 16px; max-width: 720px; }
+    .label { opacity: 0.8; }
+    .value { font-size: 1.2rem; margin: 6px 0 12px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  </style>
 </head>
 <body>
-    <h1>Welcome to Your Raspberry Pi Web Server!</h1>
-    <p>This is a simple web page hosted on your Raspberry Pi.</p>
-    <p>Connect to the Wi-Fi network to access this page.</p>
+  <div class="card">
+    <h1>PiStation Dashboard</h1>
+    <div class="row">
+      <div><div class="label">File</div><div class="value" id="file">-</div></div>
+      <div><div class="label">Time</div><div class="value" id="time">0 / 0</div></div>
+      <div><div class="label">Volume</div><div class="value" id="vol">100</div></div>
+      <div><div class="label">Paused</div><div class="value" id="pause">false</div></div>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const file = document.getElementById('file');
+    const time = document.getElementById('time');
+    const vol = document.getElementById('vol');
+    const pause = document.getElementById('pause');
+    const socket = io();
+
+    socket.on('player_status', (status) => {
+      file.textContent = status.filename || '-';
+      time.textContent = `${(status.time || 0).toFixed(1)} / ${(status.duration || 0).toFixed(1)}`;
+      vol.textContent = (status.volume ?? 100).toFixed(0);
+      pause.textContent = !!status.pause;
+    });
+  </script>
 </body>
 </html>

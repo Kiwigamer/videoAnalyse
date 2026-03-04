@@ -1,0 +1,15 @@
+[Unit]
+Description=PiStation Dashboard Kiosk
+After=graphical.target pistation-server.service
+Wants=pistation-server.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pi-media-station
+EnvironmentFile=/home/pi/pi-media-station/.env
+ExecStart=/bin/bash /home/pi/pi-media-station/dashboard-start.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

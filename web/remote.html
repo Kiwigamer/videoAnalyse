@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PiStation Remote</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; background: #f6f6f6; color: #222; }
+    .wrap { max-width: 700px; margin: 0 auto; background: #fff; border-radius: 10px; padding: 16px; }
+    button, input, select { font-size: 1rem; padding: 8px; margin: 4px 0; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    #videos { width: 100%; min-height: 120px; }
+    .muted { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>PiStation Remote</h1>
+
+    <div class="row">
+      <button onclick="control('play')">Play</button>
+      <button onclick="control('pause')">Pause</button>
+      <button onclick="control('toggle_pause')">Toggle</button>
+      <button onclick="control('stop')">Stop</button>
+    </div>
+
+    <div>
+      <label>Seek (seconds)</label>
+      <input id="seek" type="number" value="0" />
+      <button onclick="seekTo()">Go</button>
+    </div>
+
+    <div>
+      <label>Volume (0-100)</label>
+      <input id="volume" type="range" min="0" max="100" value="100" oninput="setVol(this.value)" />
+      <span id="volv">100</span>
+    </div>
+
+    <h3>Upload Video</h3>
+    <input id="upload" type="file" accept="video/*" />
+    <button onclick="uploadFile()">Upload & Play</button>
+
+    <h3>Library</h3>
+    <select id="videos" size="8"></select>
+    <div><button onclick="playSelected()">Play Selected</button></div>
+
+    <h3>Status</h3>
+    <div id="status" class="muted">Waiting for player…</div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const status = document.getElementById('status');
+    const videos = document.getElementById('videos');
+    const volv = document.getElementById('volv');
+
+    async function refreshVideos() {
+      const res = await fetch('/api/videos');
+      const items = await res.json();
+      videos.innerHTML = '';
+      items.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.name;
+        opt.textContent = v.name;
+        videos.appendChild(opt);
+      });
+    }
+
+    async function control(action, extra = {}) {
+      await fetch('/api/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...extra })
+      });
+    }
+
+    async function seekTo() {
+      const t = Number(document.getElementById('seek').value || 0);
+      await control('seek', { time: t });
+    }
+
+    async function setVol(value) {
+      volv.textContent = value;
+      await control('volume', { value: Number(value) });
+    }
+
+    async function playSelected() {
+      if (!videos.value) return;
+      await control('play_file', { name: videos.value });
+    }
+
+    async function uploadFile() {
+      const input = document.getElementById('upload');
+      if (!input.files.length) return;
+      const fd = new FormData();
+      fd.append('file', input.files[0]);
+      await fetch('/api/upload', { method: 'POST', body: fd });
+      input.value = '';
+      await refreshVideos();
+    }
+
+    socket.on('player_status', (s) => {
+      status.textContent = `File: ${s.filename || '-'} | Time: ${(s.time || 0).toFixed(1)} / ${(s.duration || 0).toFixed(1)} | Vol: ${(s.volume || 0).toFixed(0)} | Pause: ${!!s.pause}`;
+    });
+
+    refreshVideos();
+  </script>
+</body>
+</html>

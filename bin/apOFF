@@ -1,0 +1,3 @@
+#!/bin/bash
+# Kills the hotspot. NetworkManager will auto-reconnect to known Wi-Fi if available.
+nmcli connection down Hotspot
